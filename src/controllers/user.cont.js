@@ -3,6 +3,8 @@ import { apiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 const generateAccessandRefreshTokens = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -25,20 +27,30 @@ const registerUser = asyncHandler(async (req, res) => {
   if (
     [userName, fullName, email, password].some((field) => field?.trim() === "")
   ) {
-    throw new apiError(400, "all fields must be required");
+    throw new apiError(400, "All fields are required");
   }
-  const existeduser = User.findOne({
+  const existeduser = await User.findOne({
     $or: [{ userName }, { email }],
   });
   if (existeduser) {
-    throw new apiError(400, "email or username has been aleady existed");
+    throw new apiError(409, "User with email or username already exists");
   }
+  console.log(req.files);
+
   const avatarLocalPath = req.files?.avatar[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage[0]?.path;
-  if (!avatarLocalPath) {
-    throw new apiError(400, "* avatar field is mandotary");
+  //const coverImageLocalPath = req.files?.coverImage[0]?.path;
+  let coverImageLocalPath;
+  if (
+    req.files &&
+    Array.isArray(req.files.coverImage) &&
+    req.files.coverImage.length > 0
+  ) {
+    coverImageLocalPath = req.files.coverImage[0].path;
   }
-  const avatar = await uploadOnCloudinary(avatarLocalPaths);
+  if (!avatarLocalPath) {
+    throw new apiError(400, "Avatar file is required");
+  }
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
   const coverImage = await uploadOnCloudinary(coverImageLocalPath);
   if (!avatar) {
     throw new apiError(400, "* avatar field is mandotary");
@@ -48,6 +60,7 @@ const registerUser = asyncHandler(async (req, res) => {
     avatar: avatar.url,
     coverImage: coverImage?.url || "",
     email,
+    password,
     userName: userName.toLowerCase(),
   });
   const createduser = await User.findById(user._id).select(
